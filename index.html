@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Rust Book — Searchable Notes</title>
+    <style>
+        :root {
+            --bg: #faf8f5;
+            --sidebar-bg: #f3f0eb;
+            --card-bg: #ffffff;
+            --accent: #ce422b;
+            --accent-hover: #a53320;
+            --text: #2d2d2d;
+            --text-muted: #6b6b6b;
+            --border: #e0dcd6;
+            --highlight: #fff3cd;
+            --code-bg: #f6f3ee;
+            --shadow: 0 2px 8px rgba(0,0,0,0.06);
+            --shadow-hover: 0 4px 16px rgba(0,0,0,0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 24px 20px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sidebar-header h1 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sidebar-header p {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .search-box {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            background: var(--card-bg);
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .search-box input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(206, 66, 43, 0.1);
+        }
+
+        .chapter-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .chapter-item {
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            transition: all 0.15s;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chapter-item:hover {
+            background: rgba(206, 66, 43, 0.08);
+            color: var(--text);
+        }
+
+        .chapter-item.active {
+            background: var(--accent);
+            color: white;
+            font-weight: 500;
+        }
+
+        .chapter-item .ch-num {
+            display: inline-block;
+            width: 28px;
+            font-weight: 600;
+            opacity: 0.7;
+        }
+
+        .chapter-item.active .ch-num {
+            opacity: 1;
+        }
+
+        .stats {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        /* Main Content */
+        .main {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .main-header {
+            padding: 20px 32px;
+            background: var(--card-bg);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .main-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .main-header .meta {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px 32px;
+        }
+
+        .notes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+            gap: 20px;
+        }
+
+        .note-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+            transition: all 0.2s;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .note-card:hover {
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-2px);
+            border-color: var(--accent);
+        }
+
+        .note-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--accent);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .note-card:hover::before {
+            opacity: 1;
+        }
+
+        .note-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .note-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text);
+            line-height: 1.3;
+        }
+
+        .note-location {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--sidebar-bg);
+            color: var(--accent);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            white-space: nowrap;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+
+        .note-concept {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            font-style: italic;
+            border-left: 2px solid var(--border);
+            padding-left: 10px;
+        }
+
+        .note-description {
+            font-size: 0.9rem;
+            color: var(--text);
+            margin-bottom: 16px;
+            line-height: 1.6;
+        }
+
+        .note-code {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-family: "SF Mono", Monaco, "Cascadia Code", "Fira Code", Consolas, monospace;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            color: #333;
+            margin-bottom: 12px;
+        }
+
+        .note-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .tag {
+            background: var(--sidebar-bg);
+            color: var(--text-muted);
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .tag.highlight {
+            background: var(--highlight);
+            color: #856404;
+            font-weight: 600;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .no-results h3 {
+            font-size: 1.3rem;
+            margin-bottom: 8px;
+            color: var(--text);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #aaa;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .app {
+                grid-template-columns: 1fr;
+            }
+            .sidebar {
+                display: none;
+            }
+            .notes-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        mark {
+            background: var(--highlight);
+            padding: 1px 2px;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>🦀 The Rust Book</h1>
+                <p>3rd Edition • Searchable Notes</p>
+            </div>
+            <div class="search-box">
+                <input type="text" id="globalSearch" placeholder="Search any keyword, concept, code...">
+            </div>
+            <div class="chapter-list" id="chapterList"></div>
+            <div class="stats" id="stats"></div>
+        </aside>
+
+        <main class="main">
+            <div class="main-header">
+                <h2 id="mainTitle">All Notes</h2>
+                <span class="meta" id="resultCount">Loading...</span>
+            </div>
+            <div class="content" id="content">
+                <div class="notes-grid" id="notesGrid"></div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Comprehensive Rust Book Data
+        const bookData = [
+            // Chapter 1: Getting Started
+            { id: 1, chapter: "Ch. 1", section: "Getting Started", title: "Rustup & Toolchain", concept: "Installation", description: "Rust is installed via rustup, which manages versions and components. It installs rustc, cargo, and rustfmt.", code: "$ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh", tags: ["install", "rustup", "toolchain", "setup", "rustc"] },
+            { id: 2, chapter: "Ch. 1", section: "Getting Started", title: "Cargo", concept: "Build Tool", description: "Cargo is Rust's package manager and build system. It handles dependencies, building, testing, and documentation.", code: "$ cargo new project_name\n$ cargo build\n$ cargo run\n$ cargo test", tags: ["cargo", "build", "run", "test", "package", "project"] },
+            { id: 3, chapter: "Ch. 1", section: "Getting Started", title: "Hello, world!", concept: "First Program", description: "The entry point of every Rust program is the main function. Statements end with semicolons.", code: 'fn main() {\n    println!("Hello, world!");\n}', tags: ["hello world", "main", "println", "entry point", "function"] },
+            { id: 4, chapter: "Ch. 1", section: "Getting Started", title: "Cargo.toml", concept: "Manifest", description: "Configuration file that contains metadata and dependencies for a Rust project.", code: '[package]\nname = "project"\nversion = "0.1.0"\nedition = "2024"', tags: ["toml", "manifest", "dependencies", "config", "package"] },
+
+            // Chapter 2: Guessing Game
+            { id: 5, chapter: "Ch. 2", section: "Guessing Game", title: "Variable Binding with let", concept: "Immutability by Default", description: "Variables are immutable by default in Rust. Use mut to make them mutable.", code: 'let apples = 5; // immutable\nlet mut bananas = 5; // mutable', tags: ["let", "mut", "immutable", "variable", "binding"] },
+            { id: 6, chapter: "Ch. 2", section: "Guessing Game", title: "String::new()", concept: "String Type", description: "Creates a new, empty growable string instance on the heap.", code: 'let mut guess = String::new();', tags: ["String", "new", "heap", "mutable", "empty"] },
+            { id: 7, chapter: "Ch. 2", section: "Guessing Game", title: "Reading Input", concept: "Standard Input", description: "Use std::io::stdin to read user input from the terminal.", code: 'io::stdin()\n    .read_line(&mut guess)\n    .expect("Failed to read line");', tags: ["stdin", "read_line", "input", "io", "expect"] },
+            { id: 8, chapter: "Ch. 2", section: "Guessing Game", title: "Result & expect", concept: "Error Handling", description: "read_line returns a Result type. expect will panic if the Result is Err, or return the value if Ok.", code: '.expect("Failed to read line");', tags: ["Result", "expect", "panic", "error", "Ok", "Err"] },
+            { id: 9, chapter: "Ch. 2", section: "Guessing Game", title: "Shadowing", concept: "Variable Rebinding", description: "You can declare a new variable with the same name as a previous one, shadowing the old value.", code: 'let guess = String::new();\nlet guess: u32 = guess.trim().parse().expect("Not a number!");', tags: ["shadowing", "reuse", "variable", "parse", "trim"] },
+            { id: 10, chapter: "Ch. 2", section: "Guessing Game", title: "match Expression", concept: "Pattern Matching", description: "match allows comparing a value against patterns and executing code based on which pattern matches.", code: 'match guess.cmp(&secret_number) {\n    Ordering::Less => println!("Too small!"),\n    Ordering::Greater => println!("Too big!"),\n    Ordering::Equal => println!("You win!"),\n}', tags: ["match", "pattern", "Ordering", "cmp", "arms"] },
+            { id: 11, chapter: "Ch. 2", section: "Guessing Game", title: "Random Numbers", concept: "External Crates", description: "Use the rand crate to generate random numbers. Added to Cargo.toml dependencies.", code: '[dependencies]\nrand = "0.8.5"', tags: ["rand", "random", "crate", "dependency", "Cargo.toml"] },
+            { id: 12, chapter: "Ch. 2", section: "Guessing Game", title: "loop", concept: "Infinite Loop", description: "loop creates an infinite loop that continues until explicitly stopped with break.", code: 'loop {\n    // code runs forever\n    if some_condition { break; }\n}', tags: ["loop", "break", "infinite", "iteration", "repeat"] },
+
+            // Chapter 3: Common Programming Concepts
+            { id: 13, chapter: "Ch. 3", section: "Common Concepts", title: "Constants", concept: "Immutable Values", description: "Constants are always immutable and must have a type annotation. They can be declared in any scope.", code: 'const MAX_POINTS: u32 = 100_000;', tags: ["const", "constant", "immutable", "type annotation", "scope"] },
+            { id: 14, chapter: "Ch. 3", section: "Common Concepts", title: "Scalar Types", concept: "Basic Types", description: "Rust has four scalar types: integers, floating-point numbers, Booleans, and characters.", code: 'let a: u32 = 255;\nlet b: f64 = 3.14;\nlet c: bool = true;\nlet d: char = \'z\';', tags: ["scalar", "integer", "float", "bool", "char", "types"] },
+            { id: 15, chapter: "Ch. 3", section: "Common Concepts", title: "Integer Types", concept: "Signed & Unsigned", description: "Integers can be signed (i8-i128, isize) or unsigned (u8-u128, usize). Default is i32.", code: 'let signed: i32 = -42;\nlet unsigned: u32 = 42;\nlet arch: usize = 0;', tags: ["i32", "u32", "isize", "usize", "integer", "bits"] },
+            { id: 16, chapter: "Ch. 3", section: "Common Concepts", title: "Compound Types", concept: "Tuples & Arrays", description: "Tuples group values of different types. Arrays hold elements of the same type with fixed length.", code: 'let tup: (i32, f64, &str) = (500, 6.4, "hi");\nlet arr: [i32; 5] = [1, 2, 3, 4, 5];', tags: ["tuple", "array", "compound", "fixed", "group"] },
+            { id: 17, chapter: "Ch. 3", section: "Common Concepts", title: "Functions", concept: "Declaration & Calls", description: "Functions are declared with fn. Parameters require type annotations. The last expression is implicitly returned.", code: 'fn add(a: i32, b: i32) -> i32 {\n    a + b // no semicolon = return value\n}', tags: ["fn", "function", "parameter", "return", "expression"] },
+            { id: 18, chapter: "Ch. 3", section: "Common Concepts", title: "Control Flow", concept: "if / else", description: "if expressions evaluate conditions. The condition must be a bool (no implicit conversion).", code: 'if number % 4 == 0 {\n    println!("divisible by 4");\n} else if number % 3 == 0 {\n    println!("divisible by 3");\n} else {\n    println!("else");\n}', tags: ["if", "else", "control flow", "condition", "boolean"] },
+            { id: 19, chapter: "Ch. 3", section: "Common Concepts", title: "Loops", concept: "while & for", description: "while evaluates a condition. for iterates over a collection or range. for is the safest and most common.", code: 'for number in (1..4).rev() {\n    println!("{number}!");\n}\n// 3! 2! 1!', tags: ["for", "while", "loop", "range", "iterate", "rev"] },
+
+            // Chapter 4: Ownership
+            { id: 20, chapter: "Ch. 4", section: "Ownership", title: "Ownership Rules", concept: "Memory Management", description: "1. Each value has an owner. 2. Only one owner at a time. 3. Value is dropped when owner goes out of scope.", code: '// s owns the String\nlet s = String::from("hello");\n// s moved to s2, s is no longer valid\nlet s2 = s;', tags: ["ownership", "move", "drop", "scope", "rules"] },
+            { id: 21, chapter: "Ch. 4", section: "Ownership", title: "Move Semantics", concept: "Transfer of Ownership", description: "When a value is assigned to another variable or passed to a function, ownership is moved (not copied).", code: 'let s1 = String::from("hello");\nlet s2 = s1; // s1 moved into s2\n// println!("{s1}"); // ERROR!', tags: ["move", "ownership", "assignment", "invalid", "transfer"] },
+            { id: 22, chapter: "Ch. 4", section: "Ownership", title: "Clone", concept: "Deep Copy", description: "Use clone() to explicitly create a deep copy of heap data when you need independent duplicates.", code: 'let s1 = String::from("hello");\nlet s2 = s1.clone(); // both valid', tags: ["clone", "copy", "deep copy", "heap", "duplicate"] },
+            { id: 23, chapter: "Ch. 4", section: "Ownership", title: "Copy Trait", concept: "Stack-Only Types", description: "Types with Copy trait (integers, bool, char, floats, tuples of Copy types) are copied instead of moved.", code: 'let x = 5;\nlet y = x; // x is still valid (Copy trait)\nprintln!("{x}"); // works!', tags: ["Copy", "trait", "stack", "primitive", "duplicate"] },
+            { id: 24, chapter: "Ch. 4", section: "Ownership", title: "References & Borrowing", concept: "Non-Owning Pointers", description: "References allow using a value without taking ownership. Creating a reference is called borrowing.", code: 'fn calculate_length(s: &String) -> usize {\n    s.len()\n}\nlet s1 = String::from("hello");\nlet len = calculate_length(&s1); // s1 still owns the string', tags: ["reference", "borrow", "&", "ownership", "pointer"] },
+            { id: 25, chapter: "Ch. 4", section: "Ownership", title: "Mutable References", concept: "Exclusive Borrow", description: "You can have only ONE mutable reference to a particular piece of data in a particular scope. Prevents data races.", code: 'let mut s = String::from("hello");\nchange(&mut s);\nfn change(s: &mut String) {\n    s.push_str(", world");\n}', tags: ["mut", "mutable reference", "&mut", "exclusive", "data race"] },
+            { id: 26, chapter: "Ch. 4", section: "Ownership", title: "Dangling References", concept: "Lifetime Safety", description: "Rust prevents dangling references at compile time. The borrow checker ensures references never outlive their data.", code: '// This will NOT compile:\nfn dangle() -> &String {\n    let s = String::from("hello");\n    &s // s dropped here, reference invalid\n}', tags: ["dangling", "lifetime", "borrow checker", "compile error", "safety"] },
+            { id: 27, chapter: "Ch. 4", section: "Ownership", title: "String Slices", concept: "Slice Type", description: "A slice is a reference to a contiguous sequence of elements in a collection. String slices are immutable.", code: 'let s = String::from("hello world");\nlet hello = &s[0..5]; // slice from 0 to 4\nlet world = &s[6..11]; // slice from 6 to 10', tags: ["slice", "string slice", "&str", "range", "substring"] },
+            { id: 28, chapter: "Ch. 4", section: "Ownership", title: "String Literals as Slices", concept: "&str Type", description: "String literals are stored in the binary and are of type &str — an immutable slice pointing to that specific binary location.", code: 'let s: &str = "Hello, world!";', tags: ["&str", "literal", "binary", "immutable", "slice"] },
+
+            // Chapter 5: Structs
+            { id: 29, chapter: "Ch. 5", section: "Structs", title: "Struct Definition", concept: "Custom Data Type", description: "Structs group related data together into named fields. Each field must have a type.", code: 'struct User {\n    active: bool,\n    username: String,\n    email: String,\n    sign_in_count: u64,\n}', tags: ["struct", "field", "custom type", "aggregate", "data"] },
+            { id: 30, chapter: "Ch. 5", section: "Structs", title: "Struct Instantiation", concept: "Creating Instances", description: "Create an instance by specifying values for each field. Use dot notation to access or mutate fields.", code: 'let mut user1 = User {\n    active: true,\n    username: String::from("user123"),\n    email: String::from("a@b.com"),\n    sign_in_count: 1,\n};\nuser1.email = String::from("c@d.com");', tags: ["instance", "struct", "dot notation", "field", "mutate"] },
+            { id: 31, chapter: "Ch. 5", section: "Structs", title: "Field Init Shorthand", concept: "Concise Syntax", description: "When parameter names match field names, you can use shorthand syntax to avoid repetition.", code: 'fn build_user(email: String, username: String) -> User {\n    User {\n        active: true,\n        username,  // shorthand\n        email,     // shorthand\n        sign_in_count: 1,\n    }\n}', tags: ["shorthand", "field init", "parameter", "concise", "syntax"] },
+            { id: 32, chapter: "Ch. 5", section: "Structs", title: "Struct Update Syntax", concept: "Copying Fields", description: "Create a new instance using most values from another instance with .. syntax.", code: 'let user2 = User {\n    email: String::from("new@example.com"),\n    ..user1 // remaining fields from user1\n};', tags: ["update syntax", "..", "spread", "copy", "instance"] },
+            { id: 33, chapter: "Ch. 5", section: "Structs", title: "Tuple Structs", concept: "Named Tuple", description: "Tuple structs are structs without named fields. They have the meaning of a struct name but the structure of a tuple.", code: 'struct Color(i32, i32, i32);\nlet black = Color(0, 0, 0);', tags: ["tuple struct", "unnamed fields", "newtype", "Color", "Point"] },
+            { id: 34, chapter: "Ch. 5", section: "Structs", title: "Unit-Like Structs", concept: "Empty Struct", description: "Structs with no fields. Useful when you need to implement a trait on some type but don't have data to store.", code: 'struct AlwaysEqual;\nlet subject = AlwaysEqual;', tags: ["unit-like", "empty struct", "trait", "marker", "phantom"] },
+            { id: 35, chapter: "Ch. 5", section: "Structs", title: "Methods", concept: "Associated Functions", description: "Methods are defined within an impl block and take self as first parameter. They are called with dot notation.", code: 'impl Rectangle {\n    fn area(&self) -> u32 {\n        self.width * self.height\n    }\n}', tags: ["method", "impl", "self", "associated function", "dot notation"] },
+            { id: 36, chapter: "Ch. 5", section: "Structs", title: "Associated Functions", concept: "Constructors", description: "Functions in impl blocks that don't take self. Often used as constructors (e.g., String::new()). Called with ::.", code: 'impl Rectangle {\n    fn square(size: u32) -> Self {\n        Self { width: size, height: size }\n    }\n}\nlet sq = Rectangle::square(3);', tags: ["associated function", "::", "constructor", "new", "Self"] },
+
+            // Chapter 6: Enums
+            { id: 37, chapter: "Ch. 6", section: "Enums & Pattern Matching", title: "Enum Definition", concept: "Variant Types", description: "Enums allow defining a type by enumerating its possible variants. Each variant can have different types and amounts of associated data.", code: 'enum Message {\n    Quit,\n    Move { x: i32, y: i32 },\n    Write(String),\n    ChangeColor(i32, i32, i32),\n}', tags: ["enum", "variant", "Message", "custom type", "data"] },
+            { id: 38, chapter: "Ch. 6", section: "Enums & Pattern Matching", title: "Option<T>", concept: "Null Alternative", description: "Rust doesn't have null. Instead, it has Option<T> which is either Some(T) or None.", code: 'enum Option<T> {\n    Some(T),\n    None,\n}\nlet some_number = Some(5);\nlet absent_number: Option<i32> = None;', tags: ["Option", "Some", "None", "null", "absence"] },
+            { id: 39, chapter: "Ch. 6", section: "Enums & Pattern Matching", title: "match with Option", concept: "Handling Absence", description: "Use match to handle both Some and None cases safely. The compiler checks all variants are handled.", code: 'fn plus_one(x: Option<i32>) -> Option<i32> {\n    match x {\n        None => None,\n        Some(i) => Some(i + 1),\n    }\n}', tags: ["match", "Option", "Some", "None", "exhaustive"] },
+            { id: 40, chapter: "Ch. 6", section: "Enums & Pattern Matching", title: "if let", concept: "Concise Pattern Match", description: "if let is a shorter way to write a match that only cares about one pattern and ignores the rest.", code: 'if let Some(3) = some_u8_value {\n    println!("three");\n}\n// Equivalent to match with _ => ()', tags: ["if let", "concise", "pattern", "ignore", "else"] },
+            { id: 41, chapter: "Ch. 6", section: "Enums & Pattern Matching", title: "match Arms", concept: "Arms & Patterns", description: "Each arm of a match has a pattern and code. The match expression is exhaustive — all cases must be covered.", code: 'match coin {\n    Coin::Penny => {\n        println!("Lucky penny!");\n        1\n    }\n    Coin::Nickel => 5,\n    _ => 0, // catch-all pattern\n}', tags: ["arm", "pattern", "exhaustive", "catch-all", "_"] },
+
+            // Chapter 7: Modules
+            { id: 42, chapter: "Ch. 7", section: "Packages & Modules", title: "Packages & Crates", concept: "Code Organization", description: "A package contains one or more crates. A crate is a binary or library. src/main.rs is a binary crate root; src/lib.rs is a library crate root.", code: 'my_project/\n├── Cargo.toml\n├── src/\n│   ├── main.rs\n│   └── lib.rs', tags: ["package", "crate", "binary", "library", "root"] },
+            { id: 43, chapter: "Ch. 7", section: "Packages & Modules", title: "Modules", concept: "Namespaces", description: "Modules organize code within a crate and control privacy. Use mod to declare a module.", code: 'mod front_of_house {\n    pub mod hosting {\n        pub fn add_to_waitlist() {}\n    }\n}', tags: ["mod", "module", "namespace", "organization", "privacy"] },
+            { id: 44, chapter: "Ch. 7", section: "Packages & Modules", title: "pub Keyword", concept: "Visibility", description: "Items in a module are private by default. Use pub to make them public.", code: 'mod back_of_house {\n    pub struct Breakfast {\n        pub toast: String,\n        seasonal_fruit: String, // private\n    }\n}', tags: ["pub", "public", "private", "visibility", "access"] },
+            { id: 45, chapter: "Ch. 7", section: "Packages & Modules", title: "use Keyword", concept: "Bringing Paths into Scope", description: "Use use to create shortcuts to items, reducing repetition of long paths.", code: 'use crate::front_of_house::hosting;\nhosting::add_to_waitlist();', tags: ["use", "import", "scope", "path", "shortcut"] },
+            { id: 46, chapter: "Ch. 7", section: "Packages & Modules", title: "super & self", concept: "Relative Paths", description: "super refers to the parent module. self refers to the current module. Used for relative paths.", code: 'super::some_function(); // parent module\nself::some_function();  // current module', tags: ["super", "self", "relative", "path", "parent"] },
+            { id: 47, chapter: "Ch. 7", section: "Packages & Modules", title: "Re-exporting", concept: "pub use", description: "pub use re-exports an item so that external code can use it as if it were defined in that module.", code: 'pub use self::front_of_house::hosting;', tags: ["re-export", "pub use", "external", "API", "shortcut"] },
+
+            // Chapter 8: Common Collections
+            { id: 48, chapter: "Ch. 8", section: "Common Collections", title: "Vectors", concept: "Vec<T>", description: "Vectors store values of the same type in a contiguous heap allocation. They can grow or shrink.", code: 'let mut v = Vec::new();\nv.push(1);\nv.push(2);\nlet v2 = vec![1, 2, 3]; // macro', tags: ["Vec", "vector", "collection", "push", "vec!"] },
+            { id: 49, chapter: "Ch. 8", section: "Common Collections", title: "Reading Vectors", concept: "Indexing & get", description: "Access elements by index (panics if out of bounds) or get (returns Option).", code: 'let third: &i32 = &v[2]; // may panic\nlet third: Option<&i32> = v.get(2); // returns None if out of bounds', tags: ["index", "get", "Option", "panic", "bounds"] },
+            { id: 50, chapter: "Ch. 8", section: "Common Collections", title: "Iterating Vectors", concept: "for loop", description: "Iterate immutably or mutably over vectors. Cannot modify length while iterating.", code: 'for i in &mut v {\n    *i += 50; // dereference to mutate\n}', tags: ["iterate", "for", "mutable", "dereference", "*"] },
+            { id: 51, chapter: "Ch. 8", section: "Common Collections", title: "Strings", concept: "UTF-8 Text", description: "String is a growable, mutable, owned UTF-8 encoded string. String::from and .to_string() create them.", code: 'let s1 = String::from("hello");\nlet s2 = "hello".to_string();\nlet mut s3 = String::from("hello");\ns3.push_str(" world");', tags: ["String", "UTF-8", "push_str", "to_string", "text"] },
+            { id: 52, chapter: "Ch. 8", section: "Common Collections", title: "String Concatenation", concept: "+ and format!", description: "The + operator takes ownership of the left string. format! is better for multiple concatenations.", code: 'let s3 = s1 + &s2; // s1 moved\nlet s = format!("{s1}-{s2}-{s3}"); // no ownership taken', tags: ["concatenate", "+", "format!", "ownership", "string"] },
+            { id: 53, chapter: "Ch. 8", section: "Common Collections", title: "Hash Maps", concept: "HashMap<K, V>", description: "Hash maps store key-value pairs. Keys must implement Eq and Hash traits.", code: 'use std::collections::HashMap;\nlet mut scores = HashMap::new();\nscores.insert(String::from("Blue"), 10);', tags: ["HashMap", "hash", "key-value", "insert", "collection"] },
+            { id: 54, chapter: "Ch. 8", section: "Common Collections", title: "Hash Map Access", concept: "get & entry", description: "Use get to retrieve values. Use entry (or_insert) for insert-if-not-exists logic.", code: 'scores.entry(String::from("Yellow"))\n    .or_insert(50); // inserts 50 if key missing', tags: ["entry", "or_insert", "get", "default", "update"] },
+
+            // Chapter 9: Error Handling
+            { id: 55, chapter: "Ch. 9", section: "Error Handling", title: "panic!", concept: "Unrecoverable Errors", description: "panic! macro stops execution and unwinds the stack (or aborts). Used for unrecoverable errors.", code: 'panic!("crash and burn");', tags: ["panic", "unrecoverable", "abort", "unwind", "crash"] },
+            { id: 56, chapter: "Ch. 9", section: "Error Handling", title: "Result<T, E>", concept: "Recoverable Errors", description: "Result is an enum: Ok(T) for success, Err(E) for failure. Used for operations that might fail.", code: 'enum Result<T, E> {\n    Ok(T),\n    Err(E),\n}\nlet f = File::open("hello.txt"); // returns Result<File, io::Error>', tags: ["Result", "Ok", "Err", "recoverable", "File"] },
+            { id: 57, chapter: "Ch. 9", section: "Error Handling", title: "unwrap & expect", concept: "Convenience Methods", description: "unwrap returns the value inside Ok or panics on Err. expect is like unwrap but with a custom message.", code: 'let f = File::open("hello.txt").unwrap();\nlet f = File::open("hello.txt")\n    .expect("Failed to open hello.txt");', tags: ["unwrap", "expect", "panic", "convenience", "message"] },
+            { id: 58, chapter: "Ch. 9", section: "Error Handling", title: "Propagating Errors", concept: "? Operator", description: "The ? operator returns the Err value early from a function, or unwraps the Ok value.", code: 'fn read_username_from_file() -> Result<String, io::Error> {\n    let mut username = String::new();\n    File::open("hello.txt")?.read_to_string(&mut username)?;\n    Ok(username)\n}', tags: ["?", "propagate", "early return", "Result", "chaining"] },
+            { id: 59, chapter: "Ch. 9", section: "Error Handling", title: "Custom Error Types", concept: "Error Trait", description: "Implement std::error::Error for custom types. Often combined with enums to represent multiple error kinds.", code: '#[derive(Debug)]\nenum MyError {\n    NotFound,\n    InvalidFormat,\n}', tags: ["custom error", "Error trait", "derive", "Debug", "enum"] },
+
+            // Chapter 10: Generics, Traits, Lifetimes
+            { id: 60, chapter: "Ch. 10", section: "Generics, Traits, Lifetimes", title: "Generic Functions", concept: "Type Parameters", description: "Generics abstract over types to avoid code duplication while maintaining type safety at compile time.", code: 'fn largest<T: std::cmp::PartialOrd>(list: &[T]) -> &T {\n    let mut largest = &list[0];\n    for item in list {\n        if item > largest { largest = item; }\n    }\n    largest\n}', tags: ["generic", "T", "type parameter", "PartialOrd", "abstraction"] },
+            { id: 61, chapter: "Ch. 10", section: "Generics, Traits, Lifetimes", title: "Struct Generics", concept: "Generic Data Structures", description: "Structs and enums can hold generic data types. Multiple type parameters are allowed.", code: 'struct Point<T, U> {\n    x: T,\n    y: U,\n}\nlet p = Point { x: 5, y: 4.0 };', tags: ["generic struct", "Point", "multiple types", "T", "U"] },
+            { id: 62, chapter: "Ch. 10", section: "Generics, Traits, Lifetimes", title: "Traits", concept: "Shared Behavior", description: "Traits define shared behavior (interfaces). Types implement traits to promise certain functionality.", code: 'pub trait Summary {\n    fn summarize(&self) -> String;\n}\nimpl Summary for NewsArticle { ... }', tags: ["trait", "interface", "Summary", "impl", "behavior"] },
+            { id: 63, chapter: "Ch. 10", section: "Generics, Traits, Lifetimes", title: "Trait Bounds", concept: "Constraining Generics", description: "Trait bounds restrict generic types to those that implement specific traits.", code: 'pub fn notify<T: Summary>(item: &T) {}\n// or with where clause:\npub fn notify<T>(item: &T) where T: Summary {}', tags: ["trait bound", "where", "constraint", "generic", "Summary"] },
+            { id: 64, chapter: "Ch. 10", section: "Generics, Traits, Lifetimes", title: "Trait Objects", concept: "Dynamic Dispatch", description: "Trait objects (dyn Trait) allow polymorphism. They use dynamic dispatch and must be used behind a pointer.", code: 'pub fn notify(item: &dyn Summary) {\n    println!("Breaking! {}", item.summarize());\n}', tags: ["dyn", "trait object", "dynamic dispatch", "polymorphism", "pointer"] },
+            { id: 65, chapter: "Ch. 10", section: "Generics, Traits, Lifetimes", title: "Lifetimes", concept: "Reference Validity", description: "Lifetimes ensure references are valid as long as needed. They are compile-time checks, not runtime.", code: 'fn longest<\'a>(x: &\'a str, y: &\'a str) -> &\'a str {\n    if x.len() > y.len() { x } else { y }\n}', tags: ["lifetime", "\'a", "reference", "validity", "annotation"] },
+            { id: 66, chapter: "Ch. 10", section: "Generics, Traits, Lifetimes", title: "Lifetime Elision", concept: "Automatic Inference", description: "The compiler can infer lifetimes in common patterns (elision rules), reducing annotation boilerplate.", code: 'fn first_word(s: &str) -> &str { ... }\n// Same as: fn first_word<\'a>(s: &\'a str) -> &\'a str', tags: ["elision", "lifetime inference", "compiler", "shorthand", "rules"] },
+
+            // Chapter 11: Tests
+            { id: 67, chapter: "Ch. 11", section: "Writing Tests", title: "Test Functions", concept: "Unit Testing", description: "Tests are functions annotated with #[test]. Run with cargo test. They panic on failure.", code: '#[test]\nfn it_works() {\n    let result = 2 + 2;\n    assert_eq!(result, 4);\n}', tags: ["test", "#[test]", "cargo test", "unit", "assert"] },
+            { id: 68, chapter: "Ch. 11", section: "Writing Tests", title: "Assertions", concept: "assert!, assert_eq!, assert_ne!", description: "assert! checks for true. assert_eq! checks equality. assert_ne! checks inequality. All take optional message.", code: 'assert!(true);\nassert_eq!(left, right);\nassert_ne!(left, right, "custom message");', tags: ["assert", "assert_eq", "assert_ne", "equality", "check"] },
+            { id: 69, chapter: "Ch. 11", section: "Writing Tests", title: "should_panic", concept: "Expected Failures", description: "should_panic tests verify that code panics as expected. Use expected to check the panic message.", code: '#[test]\n#[should_panic(expected = "index out of bounds")]\nfn test_panic() {\n    v[99]; // should panic\n}', tags: ["should_panic", "panic", "expected", "failure", "test"] },
+            { id: 70, chapter: "Ch. 11", section: "Writing Tests", title: "Result in Tests", concept: "Returning Result", description: "Tests can return Result<T, E> instead of panicking. Use ? for early returns on error.", code: '#[test]\nfn test_with_result() -> Result<(), String> {\n    if 2 + 2 == 4 { Ok(()) } else { Err(String::from("bad math")) }\n}', tags: ["Result", "test", "return", "Ok", "Err"] },
+            { id: 71, chapter: "Ch. 11", section: "Writing Tests", title: "Test Organization", concept: "Unit vs Integration", description: "Unit tests go in src files with #[cfg(test)]. Integration tests go in tests/ directory and test the public API.", code: '// src/lib.rs\n#[cfg(test)]\nmod tests { ... }\n\n// tests/integration_test.rs\nuse my_crate;', tags: ["unit test", "integration test", "cfg(test)", "tests directory", "organization"] },
+
+            // Chapter 12: I/O Project
+            { id: 72, chapter: "Ch. 12", section: "I/O Project", title: "CLI Arguments", concept: "env::args", description: "Collect command line arguments using std::env::args. The first argument is the program name.", code: 'let args: Vec<String> = env::args().collect();\nlet query = &args[1];\nlet file_path = &args[2];', tags: ["args", "CLI", "command line", "env", "collect"] },
+            { id: 73, chapter: "Ch. 12", section: "I/O Project", title: "Reading Files", concept: "fs::read_to_string", description: "Read an entire file into a String. For larger files, use BufReader for efficiency.", code: 'use std::fs;\nlet contents = fs::read_to_string(file_path)\n    .expect("Should have been able to read the file");', tags: ["fs", "read_to_string", "file", "read", "IO"] },
+            { id: 74, chapter: "Ch. 12", section: "I/O Project", title: "Refactoring with Iterators", concept: "Iterator Chains", description: "Replace manual loops with iterator methods like filter, map, and collect for cleaner, more idiomatic code.", code: 'let results: Vec<&str> = contents\n    .lines()\n    .filter(|line| line.contains(query))\n    .collect();', tags: ["iterator", "filter", "lines", "collect", "refactor"] },
+            { id: 75, chapter: "Ch. 12", section: "I/O Project", title: "Box<dyn Error>", concept: "Error Propagation", description: "Use Box<dyn Error> as a return type to allow any kind of error to be returned from main or functions.", code: 'fn main() -> Result<(), Box<dyn Error>> {\n    let contents = fs::read_to_string(file_path)?;\n    Ok(())\n}', tags: ["Box", "dyn Error", "main", "return", "propagation"] },
+
+            // Chapter 13: Iterators & Closures
+            { id: 76, chapter: "Ch. 13", section: "Iterators & Closures", title: "Closures", concept: "Anonymous Functions", description: "Closures are anonymous functions that can capture variables from their environment. They infer parameter and return types.", code: 'let add_one = |x| x + 1;\nlet closure = |num| {\n    println!("calculating...");\n    num + 2\n};', tags: ["closure", "anonymous", "lambda", "capture", "environment"] },
+            { id: 77, chapter: "Ch. 13", section: "Iterators & Closures", title: "Closure Traits", concept: "Fn, FnMut, FnOnce", description: "Closures implement traits based on how they capture environment: Fn (immutable borrow), FnMut (mutable borrow), FnOnce (takes ownership).", code: 'Fn: borrows values immutably\nFnMut: borrows values mutably\nFnOnce: consumes values (takes ownership)', tags: ["Fn", "FnMut", "FnOnce", "trait", "capture"] },
+            { id: 78, chapter: "Ch. 13", section: "Iterators & Closures", title: "Iterators", concept: "Iterator Trait", description: "Iterators implement the Iterator trait with next() method. They are lazy — nothing happens until you call a consuming method.", code: 'pub trait Iterator {\n    type Item;\n    fn next(&mut self) -> Option<Self::Item>;\n}', tags: ["Iterator", "next", "Item", "lazy", "trait"] },
+            { id: 79, chapter: "Ch. 13", section: "Iterators & Closures", title: "Iterator Methods", concept: "map, filter, collect", description: "Iterator adaptors transform iterators. Consuming methods like collect, sum, or for_each trigger evaluation.", code: 'let v: Vec<i32> = (1..=10)\n    .map(|x| x * 2)\n    .filter(|x| x > &5)\n    .collect();', tags: ["map", "filter", "collect", "adaptor", "consuming"] },
+            { id: 80, chapter: "Ch. 13", section: "Iterators & Closures", title: "Iterator Performance", concept: "Zero-Cost Abstractions", description: "Iterators are zero-cost abstractions. The compiled code is as efficient as hand-written loops due to monomorphization and inlining.", code: '// This iterator chain compiles to the same\n// efficient machine code as a for loop', tags: ["zero-cost", "abstraction", "performance", "inline", "monomorphization"] },
+
+            // Chapter 14: Cargo & Crates.io
+            { id: 81, chapter: "Ch. 14", section: "Cargo & Crates.io", title: "Workspaces", concept: "Multi-Crate Projects", description: "Workspaces allow managing multiple related packages that share a single Cargo.lock and output directory.", code: '[workspace]\nmembers = [\n    "adder",\n    "add-one",\n]', tags: ["workspace", "multi-crate", "Cargo.lock", "members", "project"] },
+            { id: 82, chapter: "Ch. 14", section: "Cargo & Crates.io", title: "Documentation Comments", concept: "/// and //!", description: "/// documents the item after it. //! documents the enclosing item (module/crate). Generates HTML with cargo doc.", code: '/// Adds one to the given number.\n/// # Examples\n/// let five = add_one(4);\npub fn add_one(x: i32) -> i32 { x + 1 }', tags: ["doc comment", "///", "cargo doc", "documentation", "markdown"] },
+            { id: 83, chapter: "Ch. 14", section: "Cargo & Crates.io", title: "Publishing Crates", concept: "crates.io", description: "Publish libraries to crates.io using cargo publish. Requires auth token and semantic versioning.", code: '$ cargo login <API_TOKEN>\n$ cargo publish', tags: ["crates.io", "publish", "cargo", "version", "registry"] },
+            { id: 84, chapter: "Ch. 14", section: "Cargo & Crates.io", title: "Profiles", concept: "dev & release", description: "Cargo has built-in profiles for development and release, controlling optimization levels and debug info.", code: '[profile.release]\nopt-level = 3\nlto = true', tags: ["profile", "release", "dev", "optimization", "Cargo.toml"] },
+
+            // Chapter 15: Smart Pointers
+            { id: 85, chapter: "Ch. 15", section: "Smart Pointers", title: "Box<T>", concept: "Heap Allocation", description: "Box<T> allocates data on the heap and stores a pointer on the stack. Useful for recursive types or large data transfers.", code: 'let b = Box::new(5);\nprintln!("b = {}", b); // auto-dereferenced', tags: ["Box", "heap", "pointer", "recursive", "allocation"] },
+            { id: 86, chapter: "Ch. 15", section: "Smart Pointers", title: "Deref Trait", concept: "Custom Dereference", description: "Implementing Deref allows smart pointers to be treated like references. Enables deref coercion.", code: 'impl<T> Deref for MyBox<T> {\n    type Target = T;\n    fn deref(&self) -> &T { &self.0 }\n}', tags: ["Deref", "dereference", "coercion", "smart pointer", "trait"] },
+            { id: 87, chapter: "Ch. 15", section: "Smart Pointers", title: "Drop Trait", concept: "Custom Cleanup", description: "Drop lets you customize what happens when a value goes out of scope. Used for resource cleanup.", code: 'impl Drop for CustomSmartPointer {\n    fn drop(&mut self) {\n        println!("Dropping!");\n    }\n}', tags: ["Drop", "destructor", "cleanup", "scope", "resource"] },
+            { id: 88, chapter: "Ch. 15", section: "Smart Pointers", title: "Rc<T>", concept: "Reference Counting", description: "Rc<T> enables multiple ownership via reference counting. Only for single-threaded scenarios.", code: 'use std::rc::Rc;\nlet data = Rc::new(5);\nlet data2 = Rc::clone(&data);', tags: ["Rc", "reference count", "multiple ownership", "clone", "single-threaded"] },
+            { id: 89, chapter: "Ch. 15", section: "Smart Pointers", title: "RefCell<T>", concept: "Interior Mutability", description: "RefCell<T> enforces borrowing rules at runtime rather than compile time. Uses borrow() and borrow_mut().", code: 'use std::cell::RefCell;\nlet cell = RefCell::new(5);\n*cell.borrow_mut() += 1;', tags: ["RefCell", "interior mutability", "borrow", "runtime", "cell"] },
+            { id: 90, chapter: "Ch. 15", section: "Smart Pointers", title: "Reference Cycles", concept: "Memory Leaks", description: "Rc + RefCell can create reference cycles causing memory leaks. Use Weak<T> to break cycles.", code: 'use std::rc::Weak;\nlet weak = Rc::downgrade(&rc); // Weak reference', tags: ["Weak", "reference cycle", "memory leak", "downgrade", "Rc"] },
+
+            // Chapter 16: Fearless Concurrency
+            { id: 91, chapter: "Ch. 16", section: "Fearless Concurrency", title: "Threads", concept: "spawn & join", description: "Create threads with thread::spawn. Use join to wait for threads to finish and get their results.", code: 'let handle = thread::spawn(|| {\n    for i in 1..10 { println!(\"hi number {i}\"); }\n});\nhandle.join().unwrap();', tags: ["thread", "spawn", "join", "concurrent", "parallel"] },
+            { id: 92, chapter: "Ch. 16", section: "Fearless Concurrency", title: "move Closures", concept: "Transferring Ownership", description: "Use move before a closure to force it to take ownership of captured variables, useful for threads.", code: 'let v = vec![1, 2, 3];\nlet handle = thread::spawn(move || {\n    println!("Vector: {v:?}");\n});', tags: ["move", "closure", "thread", "ownership", "capture"] },
+            { id: 93, chapter: "Ch. 16", section: "Fearless Concurrency", title: "Message Passing", concept: "Channels", description: "mpsc (multiple producer, single consumer) channels transfer data between threads using send and recv.", code: 'let (tx, rx) = mpsc::channel();\ntx.send(val).unwrap();\nlet received = rx.recv().unwrap();', tags: ["channel", "mpsc", "send", "recv", "message"] },
+            { id: 94, chapter: "Ch. 16", section: "Fearless Concurrency", title: "Mutex<T>", concept: "Mutual Exclusion", description: "Mutex provides interior mutability across threads. Must acquire lock before accessing data. Lock releases when guard drops.", code: 'let m = Mutex::new(5);\n{\n    let mut num = m.lock().unwrap();\n    *num = 6;\n} // lock released here', tags: ["Mutex", "lock", "thread-safe", "interior mutability", "guard"] },
+            { id: 95, chapter: "Ch. 16", section: "Fearless Concurrency", title: "Arc<T>", concept: "Atomic Reference Count", description: "Arc<T> is like Rc<T> but thread-safe. Use Arc with Mutex to share mutable state between threads.", code: 'let counter = Arc::new(Mutex::new(0));\nlet counter2 = Arc::clone(&counter);\nthread::spawn(move || {\n    let mut num = counter2.lock().unwrap();\n    *num += 1;\n});', tags: ["Arc", "atomic", "thread-safe", "Mutex", "share"] },
+            { id: 96, chapter: "Ch. 16", section: "Fearless Concurrency", title: "Send & Sync Traits", concept: "Thread Safety Markers", description: "Send: safe to transfer ownership between threads. Sync: safe to share references between threads. Automatically implemented by compiler.", code: '// Automatically derived for types composed of\n// Send/Sync types. Unsafe to implement manually.', tags: ["Send", "Sync", "trait", "marker", "thread safety"] },
+
+            // Chapter 17: Async Programming
+            { id: 97, chapter: "Ch. 17", section: "Async Programming", title: "async & await", concept: "Asynchronous Syntax", description: "async transforms a block/function into a Future. await pauses execution until the Future resolves, without blocking the thread.", code: 'async fn fetch_data() -> String { ... }\nlet data = fetch_data().await;', tags: ["async", "await", "Future", "non-blocking", "syntax"] },
+            { id: 98, chapter: "Ch. 17", section: "Async Programming", title: "Futures", concept: "Lazy Computation", description: "Futures represent asynchronous computations. They are lazy — nothing happens until polled by an executor/runtime.", code: 'use std::future::Future;\nlet f = my_async_fn(); // Future created, not executed\nf.await; // Now it runs', tags: ["Future", "lazy", "poll", "executor", "runtime"] },
+            { id: 99, chapter: "Ch. 17", section: "Async Programming", title: "Pin", concept: "Memory Stability", description: "Pin ensures a Future isn't moved in memory after polling, which is required for self-referential async structs.", code: 'use std::pin::Pin;\nfn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<T>', tags: ["Pin", "self-referential", "move", "memory", "stability"] },
+            { id: 100, chapter: "Ch. 17", section: "Async Programming", title: "Tokio Runtime", concept: "Async Executor", description: "Tokio is the most popular async runtime for Rust. It provides the executor, timer, and I/O drivers needed to run async code.", code: '#[tokio::main]\nasync fn main() {\n    let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();\n}', tags: ["tokio", "runtime", "executor", "async main", "TcpListener"] },
+
+            // Chapter 18: OOP Features
+            { id: 101, chapter: "Ch. 18", section: "OOP Features", title: "Encapsulation", concept: "Data Hiding", description: "Rust supports encapsulation via pub. Implementation details are hidden, exposing only a public API.", code: 'pub struct AveragedCollection {\n    list: Vec<i32>, // private\n    average: f64,   // private\n}', tags: ["encapsulation", "pub", "private", "API", "hiding"] },
+            { id: 102, chapter: "Ch. 18", section: "OOP Features", title: "Inheritance vs Composition", concept: "No Inheritance", description: "Rust doesn't have inheritance. Use composition (structs containing other structs) and traits for polymorphism.", code: '// Composition over inheritance\nstruct Engine { ... }\nstruct Car {\n    engine: Engine, // composed, not inherited\n}', tags: ["composition", "inheritance", "trait object", "polymorphism", "no inheritance"] },
+            { id: 103, chapter: "Ch. 18", section: "OOP Features", title: "Trait Objects", concept: "Dynamic Polymorphism", description: "Trait objects (dyn Trait) provide dynamic polymorphism similar to virtual methods in OOP languages.", code: 'pub trait Draw { fn draw(&self); }\npub struct Screen {\n    pub components: Vec<Box<dyn Draw>>,\n}', tags: ["dyn", "trait object", "polymorphism", "Screen", "Draw"] },
+
+            // Chapter 19: Patterns & Matching
+            { id: 104, chapter: "Ch. 19", section: "Patterns & Matching", title: "Pattern Locations", concept: "Where Patterns Work", description: "Patterns appear in match arms, if let, while let, for loops, let statements, and function parameters.", code: 'let (x, y) = (1, 2); // destructuring\nif let Some(x) = opt { ... }', tags: ["pattern", "destructure", "match", "if let", "let"] },
+            { id: 105, chapter: "Ch. 19", section: "Patterns & Matching", title: "Refutability", concept: "Irrefutable Patterns", description: "Irrefutable patterns match all possible values (e.g., x in let x = 5). Refutable patterns might fail (e.g., Some(x) on None).", code: 'let x = 5; // irrefutable\nif let Some(x) = opt { ... } // refutable', tags: ["refutable", "irrefutable", "pattern", "let", "match"] },
+            { id: 106, chapter: "Ch. 19", section: "Patterns & Matching", title: "Pattern Syntax", concept: "Advanced Patterns", description: "Patterns can match literals, named variables, multiple patterns (|), ranges (..=), destructuring, and use @ bindings.", code: 'match num {\n    1 | 2 => println!("one or two"),\n    3..=9 => println!("three to nine"),\n    n @ 10..=20 => println!("matched {n}"),\n    _ => println!("other"),\n}', tags: ["pattern syntax", "|", "range", "@ binding", "destructure"] },
+            { id: 107, chapter: "Ch. 19", section: "Patterns & Matching", title: "Destructuring", concept: "Breaking Apart Values", description: "Destructuring unpacks structs, enums, tuples, and nested patterns to bind inner values directly.", code: 'let Point { x, y } = point;\nlet Message::Write(text) = msg;\nlet ((a, b), Point { x, y }) = nested;', tags: ["destructure", "unpack", "struct", "enum", "nested"] },
+            { id: 108, chapter: "Ch. 19", section: "Patterns & Matching", title: "Match Guards", concept: "Conditional Arms", description: "Match guards add extra if conditions to match arms for more expressive pattern matching.", code: 'match num {\n    Some(x) if x < 5 => println!("less than five: {x}"),\n    Some(x) => println!("{x}"),\n    None => (),\n}', tags: ["guard", "if", "condition", "match arm", "extra check"] },
+
+            // Chapter 20: Advanced Features
+            { id: 109, chapter: "Ch. 20", section: "Advanced Features", title: "Unsafe Rust", concept: "Unsafe Keyword", description: "unsafe allows five superpowers: dereference raw pointers, call unsafe functions, access/modify static mut, implement unsafe traits, access union fields.", code: 'unsafe {\n    let raw = &mut 5 as *mut i32;\n    *raw = 10;\n}', tags: ["unsafe", "raw pointer", "dereference", "superpower", "block"] },
+            { id: 110, chapter: "Ch. 20", section: "Advanced Features", title: "Raw Pointers", concept: "*const & *mut", description: "Raw pointers can be null or dangling, and allow aliasing. They are created with as or from memory addresses.", code: 'let raw = &mut 5 as *mut i32;\nlet const_ptr = &5 as *const i32;\nunsafe { *raw = 10; }', tags: ["raw pointer", "*const", "*mut", "null", "aliasing"] },
+            { id: 111, chapter: "Ch. 20", section: "Advanced Features", title: "extern Functions", concept: "FFI", description: "extern creates an interface to foreign functions (FFI). \"C\" specifies the ABI. unsafe is required.", code: 'extern "C" {\n    fn abs(input: i32) -> i32;\n}\nunsafe { println!("{}", abs(-3)); }', tags: ["extern", "FFI", "C", "ABI", "foreign"] },
+            { id: 112, chapter: "Ch. 20", section: "Advanced Features", title: "Macros", concept: "Declarative Macros", description: "macro_rules! creates declarative macros that match patterns and generate code. They operate on syntax tokens.", code: 'macro_rules! vec {\n    ($($x:expr),*) => {\n        {\n            let mut temp_vec = Vec::new();\n            $(temp_vec.push($x);)*\n            temp_vec\n        }\n    };\n}', tags: ["macro", "macro_rules", "declarative", "code generation", "token"] },
+            { id: 113, chapter: "Ch. 20", section: "Advanced Features", title: "Procedural Macros", concept: "Derive Macros", description: "Procedural macros operate on AST tokens. Three kinds: custom derive, attribute-like, and function-like.", code: '#[derive(Debug, Clone)] // custom derive\n#[my_attribute]          // attribute-like\nmy_macro!();             // function-like', tags: ["procedural macro", "derive", "attribute", "AST", "token"] },
+            { id: 114, chapter: "Ch. 20", section: "Advanced Features", title: "Advanced Traits", concept: "Associated Types", description: "Associated types connect a type placeholder with a trait. They differ from generics by not needing annotation at each use.", code: 'pub trait Iterator {\n    type Item;\n    fn next(&mut self) -> Option<Self::Item>;\n}', tags: ["associated type", "Item", "trait", "placeholder", "generic"] },
+            { id: 115, chapter: "Ch. 20", section: "Advanced Features", title: "Fully Qualified Syntax", concept: "Disambiguation", description: "Use <Type as Trait>::method to disambiguate when multiple traits define methods with the same name.", code: '<Dog as Animal>::baby_name()\n// vs\nDog::baby_name()', tags: ["fully qualified", "disambiguate", "trait", "syntax", "as"] },
+            { id: 116, chapter: "Ch. 20", section: "Advanced Features", title: "Supertraits", concept: "Trait Dependencies", description: "A trait can require another trait (supertrait) to be implemented. Use colon syntax.", code: 'trait OutlinePrint: fmt::Display {\n    fn outline_print(&self) { ... }\n}', tags: ["supertrait", "dependency", "Display", "trait bound", "colon"] },
+            { id: 117, chapter: "Ch. 20", section: "Advanced Features", title: "Newtype Pattern", concept: "Type Wrapper", description: "Newtype pattern wraps an existing type in a tuple struct to implement external traits on external types.", code: 'struct Wrapper(Vec<String>);\nimpl Display for Wrapper { ... }', tags: ["newtype", "wrapper", "orphan rule", "tuple struct", "Display"] },
+
+            // Chapter 21: Final Project
+            { id: 118, chapter: "Ch. 21", section: "Final Project", title: "TCP Listener", concept: "Network I/O", description: "Create a TCP server that binds to an address and accepts incoming connections using std::net::TcpListener.", code: 'let listener = TcpListener::bind("127.0.0.1:7878").unwrap();\nfor stream in listener.incoming() {\n    let stream = stream.unwrap();\n    handle_connection(stream);\n}', tags: ["TcpListener", "bind", "incoming", "network", "server"] },
+            { id: 119, chapter: "Ch. 21", section: "Final Project", title: "Thread Pool", concept: "Worker Pattern", description: "A thread pool limits the number of concurrent threads, reusing them for multiple requests to avoid overhead.", code: 'pub struct ThreadPool {\n    workers: Vec<Worker>,\n    sender: mpsc::Sender<Job>,\n}', tags: ["thread pool", "Worker", "mpsc", "reuse", "limit"] },
+            { id: 120, chapter: "Ch. 21", section: "Final Project", title: "Graceful Shutdown", concept: "Clean Exit", description: "Implement Drop on the thread pool to join all worker threads, ensuring active requests finish before shutdown.", code: 'impl Drop for ThreadPool {\n    fn drop(&mut self) {\n        for worker in &mut self.workers {\n            if let Some(thread) = worker.thread.take() {\n                thread.join().unwrap();\n            }\n        }\n    }\n}', tags: ["graceful shutdown", "Drop", "join", "clean exit", "thread"] },
+
+            // Appendices
+            { id: 121, chapter: "App. A", section: "Keywords", title: "Rust Keywords", concept: "Reserved Words", description: "Rust has strict, reserved, and weak keywords. Examples: fn, let, mut, pub, impl, trait, async, await, unsafe, const, static, type, where.", code: 'strict: as, break, const, continue, crate, else, enum, extern, false, fn, for, if, impl, in, let, loop, match, mod, move, mut, pub, ref, return, self, Self, static, struct, super, trait, true, type, unsafe, use, where, while', tags: ["keyword", "reserved", "strict", "syntax", "identifier"] },
+            { id: 122, chapter: "App. B", section: "Operators", title: "Operators & Symbols", concept: "Syntax Reference", description: "Rust uses many operators: arithmetic (+, -, *, /, %), bitwise (&, |, ^, <<, >>), comparison (==, !=, <, >, <=, >=), logical (!, &&, ||), and dereference (*, &, &mut).", code: 'a + b; *ptr; &val; &mut val; a == b; a != b; a << b; a >> b; a & b; a | b; a ^ b', tags: ["operator", "symbol", "arithmetic", "bitwise", "dereference"] },
+            { id: 123, chapter: "App. C", section: "Derivable Traits", title: "Derivable Traits", concept: "Auto Traits", description: "Common derivable traits: Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default. Add with #[derive(...)].", code: '#[derive(Debug, Clone, Copy, PartialEq, Eq)]\nstruct Point { x: i32, y: i32 }', tags: ["derive", "Debug", "Clone", "Copy", "trait", "macro"] },
+            { id: 124, chapter: "App. D", section: "Development Tools", title: "Rustfmt", concept: "Code Formatting", description: "rustfmt automatically formats Rust code according to style guidelines. Run with cargo fmt.", code: '$ cargo fmt', tags: ["rustfmt", "format", "style", "cargo fmt", "tool"] },
+            { id: 125, chapter: "App. D", section: "Development Tools", title: "Clippy", concept: "Linting", description: "Clippy is a collection of lints to catch common mistakes and improve idiomatic Rust code.", code: '$ cargo clippy', tags: ["clippy", "lint", "warning", "idiomatic", "tool"] },
+            { id: 126, chapter: "App. E", section: "Editions", title: "Rust Editions", concept: "Language Versions", description: "Editions allow Rust to evolve without breaking existing code. Current: 2015, 2018, 2021, 2024. Specified in Cargo.toml.", code: '[package]\nedition = "2024"', tags: ["edition", "2015", "2018", "2021", "2024", "version"] }
+        ];
+
+        // State
+        let currentChapter = 'All';
+        let searchQuery = '';
+
+        // DOM Elements
+        const chapterList = document.getElementById('chapterList');
+        const notesGrid = document.getElementById('notesGrid');
+        const globalSearch = document.getElementById('globalSearch');
+        const mainTitle = document.getElementById('mainTitle');
+        const resultCount = document.getElementById('resultCount');
+        const stats = document.getElementById('stats');
+
+        // Extract unique chapters
+        const chapters = [...new Set(bookData.map(d => d.chapter))];
+
+        // Render chapter list
+        function renderChapters() {
+            chapterList.innerHTML = '';
+            
+            // All option
+            const allItem = document.createElement('div');
+            allItem.className = `chapter-item ${currentChapter === 'All' ? 'active' : ''}`;
+            allItem.innerHTML = '<span class="ch-num">All</span> All Chapters';
+            allItem.onclick = () => { currentChapter = 'All'; renderChapters(); filterNotes(); };
+            chapterList.appendChild(allItem);
+
+            chapters.forEach(ch => {
+                const item = document.createElement('div');
+                item.className = `chapter-item ${currentChapter === ch ? 'active' : ''}`;
+                const section = bookData.find(d => d.chapter === ch)?.section || '';
+                item.innerHTML = `<span class="ch-num">${ch}</span> ${section}`;
+                item.onclick = () => { currentChapter = ch; renderChapters(); filterNotes(); };
+                chapterList.appendChild(item);
+            });
+        }
+
+        // Highlight search terms
+        function highlightText(text, query) {
+            if (!query) return text;
+            const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
+            return text.replace(regex, '<mark>$1</mark>');
+        }
+
+        function escapeRegex(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        // Render notes
+        function renderNotes(notes) {
+            if (notes.length === 0) {
+                notesGrid.innerHTML = `
+                    <div class="no-results" style="grid-column: 1 / -1;">
+                        <h3>No notes found</h3>
+                        <p>Try a different keyword or chapter filter.</p>
+                    </div>
+                `;
+                resultCount.textContent = '0 results';
+                return;
+            }
+
+            notesGrid.innerHTML = notes.map(note => {
+                const title = highlightText(note.title, searchQuery);
+                const concept = highlightText(note.concept, searchQuery);
+                const desc = highlightText(note.description, searchQuery);
+                const code = note.code ? highlightText(note.code, searchQuery) : '';
+                const tags = note.tags.map(t => {
+                    const isMatch = searchQuery && t.toLowerCase().includes(searchQuery.toLowerCase());
+                    return `<span class="tag ${isMatch ? 'highlight' : ''}">${t}</span>`;
+                }).join('');
+
+                return `
+                    <div class="note-card" onclick="copyToClipboard('${note.id}')">
+                        <div class="note-header">
+                            <div class="note-title">${title}</div>
+                            <div class="note-location">${note.chapter} • ${note.section}</div>
+                        </div>
+                        <div class="note-concept">${concept}</div>
+                        <div class="note-description">${desc}</div>
+                        ${code ? `<div class="note-code"><pre>${code}</pre></div>` : ''}
+                        <div class="note-tags">${tags}</div>
+                    </div>
+                `;
+            }).join('');
+
+            resultCount.textContent = `${notes.length} result${notes.length !== 1 ? 's' : ''}`;
+        }
+
+        // Filter logic
+        function filterNotes() {
+            const query = searchQuery.toLowerCase().trim();
+            
+            let filtered = bookData;
+            
+            // Chapter filter
+            if (currentChapter !== 'All') {
+                filtered = filtered.filter(n => n.chapter === currentChapter);
+            }
+            
+            // Search filter
+            if (query) {
+                filtered = filtered.filter(n => {
+                    const searchText = `${n.title} ${n.concept} ${n.description} ${n.code || ''} ${n.tags.join(' ')} ${n.section}`.toLowerCase();
+                    return searchText.includes(query);
+                });
+            }
+
+            mainTitle.textContent = currentChapter === 'All' ? 'All Notes' : `${currentChapter}: ${bookData.find(d => d.chapter === currentChapter)?.section}`;
+            renderNotes(filtered);
+        }
+
+        // Copy note to clipboard
+        function copyToClipboard(id) {
+            const note = bookData.find(n => n.id === id);
+            if (!note) return;
+            
+            const text = `${note.title} (${note.chapter} - ${note.section})\nConcept: ${note.concept}\n\n${note.description}\n\n${note.code || ''}`;
+            navigator.clipboard.writeText(text).then(() => {
+                // Visual feedback could be added here
+            });
+        }
+
+        // Event listeners
+        globalSearch.addEventListener('input', (e) => {
+            searchQuery = e.target.value;
+            filterNotes();
+        });
+
+        // Stats
+        stats.textContent = `${bookData.length} concepts indexed`;
+
+        // Initialize
+        renderChapters();
+        filterNotes();
+    </script>
+</body>
+</html>
